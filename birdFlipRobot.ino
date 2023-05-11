@@ -1,21 +1,26 @@
-#include <WiFi.h>
+ #include <WiFi.h>
 #include <WiFiClient.h>
 #include <WiFiServer.h>
 #include <ESP32Servo.h>
 
-int motor1Pin1 = 12; 
-int motor1Pin2 = 13; 
-int enable1Pin = 14; 
+int motor1Pin1 = 5; 
+int motor1Pin2 = 4; 
+int ENA2 =13;
 
 int motor2Pin1 = 15; 
-int motor2Pin2 = 16; 
-int enable2Pin = 17; 
+int motor2Pin2 = 16;  
+int ENA1 = 14;
 
 int armPin1 = 18;
 int armPin2 = 19;
 
 Servo leftMotor;
 Servo rightMotor;
+
+const int frequency = 500;
+const int pwm_channel1 = 0;
+const int resolution = 8;
+const int pwm_channel2 = 1;
 
 
 const char* ssid = "NETGEAR81";
@@ -24,16 +29,37 @@ WiFiServer server(80);
 
 void setup() {
 
-  ESP32PWM::allocateTimer(0);
-	ESP32PWM::allocateTimer(1);
-	ESP32PWM::allocateTimer(2);
-	ESP32PWM::allocateTimer(3);
-	leftMotor.setPeriodHertz(50);
-  rightMotor.setPeriodHertz(50);
-  leftMotor.attatch(armPin1, 500, 2400);
-  rightMotor.attatch(armPin2, 500, 2400);
-  
   Serial.begin(115200);
+
+  pinMode(4, OUTPUT);
+  pinMode(5, OUTPUT);
+  pinMode(13, OUTPUT);
+  pinMode(14, OUTPUT);
+  pinMode(15, OUTPUT);
+  pinMode(16, OUTPUT);
+  digitalWrite(4, LOW);
+  digitalWrite(5, LOW);
+  digitalWrite(15, HIGH);
+  digitalWrite(16, LOW);
+  digitalWrite(14, LOW);
+   digitalWrite(3, LOW);
+   
+
+  ledcSetup(pwm_channel1, frequency, resolution);
+  ledcAttachPin(ENA1, pwm_channel1);
+  ledcSetup(pwm_channel2, frequency, resolution);
+  ledcAttachPin(ENA2, pwm_channel1);
+
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
+  leftMotor.setPeriodHertz(50);
+  rightMotor.setPeriodHertz(50);
+  leftMotor.attach(armPin1, 500, 2400);
+  rightMotor.attach(armPin2, 500, 2400);
+  
+  
   Serial.println("connected");
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
@@ -46,6 +72,71 @@ void setup() {
   Serial.println(WiFi.localIP());
 }
 
+
+
+
+void movement(char motor, bool direction, int espeed)
+{
+  if (motor == 'l')
+  {
+    ledcWrite(pwm_channel1, espeed);
+    if (direction)
+    {
+      digitalWrite(4, LOW);
+      digitalWrite(5, HIGH);
+    }
+    else
+    {
+      digitalWrite(4, HIGH);
+      digitalWrite(5, LOW);
+    }
+  }
+  else if (motor == 'r')
+  {
+    ledcWrite(pwm_channel2, espeed);
+    if (direction)
+    {
+      digitalWrite(16, LOW);
+      digitalWrite(15, LOW);
+    }
+    else
+    {
+      digitalWrite(16, HIGH);
+      digitalWrite(15, HIGH);
+    }
+  }
+  else
+  {
+     ledcWrite(pwm_channel2, espeed);
+    ledcWrite(pwm_channel1, espeed);
+     if (direction)
+    {
+      digitalWrite(4, LOW);
+      digitalWrite(5, HIGH);
+      digitalWrite(16, LOW);
+      digitalWrite(15, LOW);
+    }
+    else
+    {
+      digitalWrite(4, HIGH);
+      digitalWrite(5, LOW);
+      digitalWrite(16, HIGH);
+      digitalWrite(15, HIGH);
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
 void loop() {
   WiFiClient client = server.available();
   if (client) {
@@ -55,12 +146,13 @@ void loop() {
 
     int xpos = -1, ypos = -1;
     bool button = false;
-    int speed = 0;
+    int espeed = 0;
     if (request.startsWith("GET /")) {
-      int x = request.indexOf("x=") - 1895;
-      int y = request.indexOf("&y=") - 1895;
+      int x = request.indexOf("x=");
+      int y = request.indexOf("&y=");
       bool button = request.indexOf(", button state=");
-      int speed = request.indexOf(", speed =");
+      int espeed = request.indexOf(", speed =");
+      espeed = espeed / 4.011;
       if (xpos != -1 && ypos != -1) {
         xpos = request.substring(xpos + 2, ypos).toInt();
         ypos = request.substring(ypos + 3, request.length() - 9).toInt();
@@ -73,7 +165,7 @@ void loop() {
     client.println();
     
 
-    if (xpos > 5 || xpos < 5 || ypos > 5 || ypos < 5)
+    if (xpos > 100 || xpos < 100 || ypos > 100 || ypos < 100)
     {
       client.print("x=");
       client.print(xpos);
@@ -81,10 +173,31 @@ void loop() {
       client.print(ypos);
       client.println();
       
-    int xSpeed = xpos + speed;
-    int ySpeed = ypos + speed;
-      
+    if (xpos < 0)
+    {
+     movement('b', true, espeed);
     }
+    else 
+    {
+      movement('b', false, espeed);
+    }
+
+    if  (ypos < 0)
+    {
+      movement('l', true, espeed);
+      movement('r', false, espeed);
+    }
+    else
+    {
+      movement('r', true, espeed);
+      movement('l', false, espeed);
+    }
+    }
+    else
+  {
+    movement('b', false, 0);
+  }
+      
     if (button)
     {
       rightMotor.write(100);
